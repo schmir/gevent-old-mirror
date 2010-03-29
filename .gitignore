@@ -1,0 +1,13 @@
+*~
+*.pyc
+*.orig
+dist
+gevent.egg-info
+build
+gevent/core.c
+gevent/core.so
+gevent/core_d.so
+doc/_build
+doc/changelog.rst
+push
+libevent-src
