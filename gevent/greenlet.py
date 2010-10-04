@@ -136,11 +136,18 @@ class FailureGreenletLink(GreenletLink):
             return GreenletLink.__call__(self, source)
 
 
+def killgroup(source):
+    if source.group:
+        g = greenlet(source.group.kill, get_hub())
+        g.switch()
+
+
 class Greenlet(greenlet):
     """A light-weight cooperatively-scheduled execution unit."""
 
     args = ()
     kwargs = {}
+    group = None
 
     def __init__(self, run=None, *args, **kwargs):
         greenlet.__init__(self, parent=get_hub())
@@ -155,6 +162,26 @@ class Greenlet(greenlet):
         self._exception = _NONE
         self._notifier = None
         self._start_event = None
+        group = getattr(getcurrent(), "group", None)
+        if group is not None:
+            self.group = group
+            group.add(self)
+
+    def detach_group(self):
+        if self.group is not None:
+            self.group.discard(self)
+            self.group = None
+
+    def switch_group(self, detach=True):
+        from gevent.pool import Group
+        if detach:
+            self.detach_group()
+        self.group = Group()
+        self.group.add(self)
+
+    def become_master(self, detach=True):
+        self.switch_group(detach=detach)
+        self.link(killgroup)
 
     @property
     def started(self):
