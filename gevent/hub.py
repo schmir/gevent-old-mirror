@@ -137,6 +137,41 @@ def get_hub():
         hub = _threadlocal.hub = hubtype()
         return hub
 
+def _socketpair():
+    socket = __import__("socket")
+    try:
+        reader, writer = socket.socketpair()
+    except AttributeError:
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        server.bind(('127.0.0.1', 0))
+        server.listen(1)
+        client.connect(server.getsockname())
+        reader, clientaddr = server.accept()
+        writer = client
+
+    writer.setblocking(0)
+    reader.setblocking(0)
+    return reader, writer
+
+class _Waker(object):
+    def __init__(self, cb):
+        self.cb = cb
+        self.reader, self.writer = _socketpair()
+        self.event = core.event(core.EV_READ | core.EV_PERSIST, self.reader.fileno(), self.eventcb)
+        self.event.add()
+
+    def eventcb(self, event, evtype):
+        import socket
+        try:
+            self.reader.recv(4096)
+        except socket.error:
+            pass
+        self.cb()
+
+    def wakeup(self):
+        self.writer.send(".")
 
 class Hub(greenlet):
     """A greenlet that runs the event loop.
@@ -147,6 +182,8 @@ class Hub(greenlet):
     def __init__(self):
         greenlet.__init__(self)
         self.keyboard_interrupt_signal = None
+        self.waker = None
+        self.callqueue = []
 
     def switch(self):
         cur = getcurrent()
@@ -171,6 +208,11 @@ class Hub(greenlet):
             self.keyboard_interrupt_signal = signal(2, core.active_event, MAIN.throw, KeyboardInterrupt)
         except IOError:
             pass  # no signal() on windows
+
+        self.waker = _Waker(self.run_callqueue)
+        if self.callqueue:
+            self.waker.wakeup()
+
         try:
             loop_count = 0
             while True:
@@ -208,6 +250,27 @@ class Hub(greenlet):
             if ex.code == 1:  # no more events registered?
                 return
             raise
+
+    def call_in_hub(self, f, *args, **kwargs):
+        self.callqueue.append((f, args, kwargs))
+        if self.waker:
+            self.waker.wakeup()
+
+    def run_callqueue(self):
+        count = 0
+        total = len(self.callqueue)
+        for (f, args, kwargs) in self.callqueue:
+            try:
+                f(*args, **kwargs)
+            except:
+                pass  # XXX log error
+
+            count += 1
+            if count == total:
+                break
+        del self.callqueue[:count]
+        if self.callqueue:
+            self.waker.wakeup()
 
 
 class DispatchExit(Exception):
