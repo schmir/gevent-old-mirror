@@ -98,11 +98,11 @@ cdef extern from "libevent.h":
     int EVLOOP_NONBLOCK
     char* _EVENT_VERSION
 
-    int EV_TIMEOUT
-    int EV_READ
-    int EV_WRITE
-    int EV_SIGNAL
-    int EV_PERSIST
+    int C_EV_TIMEOUT "EV_TIMEOUT"
+    int C_EV_READ "EV_READ"
+    int C_EV_WRITE "EV_WRITE"
+    int C_EV_SIGNAL "EV_SIGNAL"
+    int C_EV_PERSIST "EV_PERSIST"
 
     int EVLIST_TIMEOUT
     int EVLIST_INSERTED
@@ -111,6 +111,11 @@ cdef extern from "libevent.h":
     int EVLIST_INTERNAL
     int EVLIST_INIT
 
+EV_TIMEOUT = C_EV_TIMEOUT
+EV_READ = C_EV_READ
+EV_WRITE = C_EV_WRITE
+EV_SIGNAL = C_EV_SIGNAL
+EV_PERSIST = C_EV_PERSIST
 
 cdef extern from "string.h":
     char* strerror(int errnum)
@@ -135,7 +140,7 @@ cdef void __event_handler(int fd, short evtype, void *arg) with gil:
             traceback.print_exc()
         sys.exc_clear()
     finally:
-        if not event_pending(&self.ev, EV_READ|EV_WRITE|EV_SIGNAL|EV_TIMEOUT, NULL):
+        if not event_pending(&self.ev, C_EV_READ|C_EV_WRITE|C_EV_SIGNAL|C_EV_TIMEOUT, NULL):
             self._delref()
 
 
@@ -176,7 +181,7 @@ cdef class event:
         """Return True if the event is still scheduled to run."""
 
         def __get__(self):
-            return event_pending(&self.ev, EV_TIMEOUT|EV_SIGNAL|EV_READ|EV_WRITE, NULL)
+            return event_pending(&self.ev, C_EV_TIMEOUT|C_EV_SIGNAL|C_EV_READ|C_EV_WRITE, NULL)
 
     property fd:
 
@@ -194,8 +199,8 @@ cdef class event:
             result = []
             cdef short events = self.ev.ev_events
             cdef short c_event
-            for (event, txt) in ((EV_TIMEOUT, 'TIMEOUT'), (EV_READ, 'READ'), (EV_WRITE, 'WRITE'),
-                                 (EV_SIGNAL, 'SIGNAL'), (EV_PERSIST, 'PERSIST')):
+            for (event, txt) in ((C_EV_TIMEOUT, 'TIMEOUT'), (C_EV_READ, 'READ'), (C_EV_WRITE, 'WRITE'),
+                                 (C_EV_SIGNAL, 'SIGNAL'), (C_EV_PERSIST, 'PERSIST')):
                 c_event = event
                 if events & c_event:
                     result.append(txt)
@@ -255,7 +260,7 @@ cdef class event:
     def cancel(self):
         """Remove event from the event queue."""
         cdef int result
-        if event_pending(&self.ev, EV_TIMEOUT|EV_SIGNAL|EV_READ|EV_WRITE, NULL):
+        if event_pending(&self.ev, C_EV_TIMEOUT|C_EV_SIGNAL|C_EV_READ|C_EV_WRITE, NULL):
             result = event_del(&self.ev)
             if result < 0:
                 return result
@@ -299,9 +304,9 @@ cdef class read_event(event):
     """Create a new scheduled event with evtype=EV_READ"""
 
     def __init__(self, int handle, callback, timeout=None, arg=None, persist=False):
-        cdef short evtype = EV_READ
+        cdef short evtype = C_EV_READ
         if persist:
-            evtype = evtype | EV_PERSIST
+            evtype = evtype | C_EV_PERSIST
         event.__init__(self, evtype, handle, callback, arg)
         self.add(timeout)
 
@@ -310,20 +315,20 @@ cdef class write_event(event):
     """Create a new scheduled event with evtype=EV_WRITE"""
 
     def __init__(self, int handle, callback, timeout=None, arg=None, persist=False):
-        cdef short evtype = EV_WRITE
+        cdef short evtype = C_EV_WRITE
         if persist:
-            evtype = evtype | EV_PERSIST
+            evtype = evtype | C_EV_PERSIST
         event.__init__(self, evtype, handle, callback, arg)
         self.add(timeout)
 
 
 class readwrite_event(event):
-    """Create a new scheduled event with evtype=EV_READ|EV_WRITE"""
+    """Create a new scheduled event with evtype=C_EV_READ|EV_WRITE"""
 
     def __init__(self, int handle, callback, timeout=None, arg=None, persist=False):
-        cdef short evtype = EV_READ|EV_WRITE
+        cdef short evtype = C_EV_READ|C_EV_WRITE
         if persist:
-            evtype = evtype | EV_PERSIST
+            evtype = evtype | C_EV_PERSIST
         event.__init__(self, evtype, handle, callback, arg)
         self.add(timeout)
 
@@ -341,7 +346,7 @@ cdef void __simple_handler(int fd, short evtype, void *arg) with gil:
             traceback.print_exc()
         sys.exc_clear()
     finally:
-        if not event_pending(&self.ev, EV_READ|EV_WRITE|EV_SIGNAL|EV_TIMEOUT, NULL):
+        if not event_pending(&self.ev, C_EV_READ|C_EV_WRITE|C_EV_SIGNAL|C_EV_TIMEOUT, NULL):
             self._delref()
 
 
@@ -361,7 +366,7 @@ cdef class signal(event):
     def __init__(self, int signalnum, callback, *args, **kwargs):
         self.callback = callback
         self.arg = (args, kwargs)
-        event_set(&self.ev, signalnum, EV_SIGNAL|EV_PERSIST, __simple_handler, <void*>self)
+        event_set(&self.ev, signalnum, C_EV_SIGNAL|C_EV_PERSIST, __simple_handler, <void*>self)
         self.add()
 
 
@@ -373,7 +378,7 @@ cdef class active_event(event):
         self.arg = (args, kwargs)
         evtimer_set(&self.ev, __simple_handler, <void*>self)
         self._addref()
-        event_active(&self.ev, EV_TIMEOUT, 1)
+        event_active(&self.ev, C_EV_TIMEOUT, 1)
 
     def add(self, timeout=None):
         raise NotImplementedError
