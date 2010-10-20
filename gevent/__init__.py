@@ -10,6 +10,11 @@ version_info = (0, 14, 0)
 __version__ = '0.14.0dev'
 
 import sys
+try:
+    sys.path.remove(__path__[0])  # in case we started a module in gevent as script
+except ValueError:
+    pass
+
 if sys.platform == 'win32':
     __import__('socket')  # trigger WSAStartup call
 del sys
