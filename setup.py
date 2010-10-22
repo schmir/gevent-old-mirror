@@ -135,6 +135,7 @@ def compile_libevent(build):
 
         if not exists("./config.status"):
             mysystem("%s --with-pic --disable-shared --disable-dependency-tracking" % configure)
+            os.system("sed -i 's/SUBDIRS = .*/SUBDIRS = ./' Makefile")  # we don't care if that fails.
         if "bsd" in sys.platform:
             mysystem("gmake")
         else:
