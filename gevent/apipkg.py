@@ -9,11 +9,11 @@ import os
 import sys
 from types import ModuleType
 
-__version__ = "1.1"
+__version__ = '1.2.dev5'
 
 def initpkg(pkgname, exportdefs, attr=dict()):
     """ initialize given package from the export definitions. """
-    oldmod = sys.modules[pkgname]
+    oldmod = sys.modules.get(pkgname)
     d = {}
     f = getattr(oldmod, '__file__', None)
     if f:
@@ -25,10 +25,11 @@ def initpkg(pkgname, exportdefs, attr=dict()):
         d['__loader__'] = oldmod.__loader__
     if hasattr(oldmod, '__path__'):
         d['__path__'] = [os.path.abspath(p) for p in oldmod.__path__]
-    if hasattr(oldmod, '__doc__'):
+    if '__doc__' not in exportdefs and getattr(oldmod, '__doc__', None):
         d['__doc__'] = oldmod.__doc__
     d.update(attr)
-    oldmod.__dict__.update(d)
+    if hasattr(oldmod, "__dict__"):
+        oldmod.__dict__.update(d)
     mod = ApiModule(pkgname, exportdefs, implprefix=pkgname, attr=d)
     sys.modules[pkgname]  = mod
 
@@ -44,6 +45,16 @@ def importobj(modpath, attrname):
     return retval
 
 class ApiModule(ModuleType):
+    def __docget(self):
+        try:
+            return self.__doc
+        except AttributeError:
+            if '__doc__' in self.__map__:
+                return self.__makeattr('__doc__')
+    def __docset(self, value):
+        self.__doc = value
+    __doc__ = property(__docget, __docset)
+
     def __init__(self, name, importspec, implprefix=None, attr=None):
         self.__name__ = name
         self.__all__ = [x for x in importspec if x != '__onfirstaccess__']
@@ -70,12 +81,10 @@ class ApiModule(ModuleType):
                     subname = '%s.%s'%(self.__name__, name)
                     apimod = AliasModule(subname, modpath)
                     sys.modules[subname] = apimod
-                    setattr(self, name, apimod)
+                    if '.' not in name:
+                        setattr(self, name, apimod)
                 else:
-                    if name == '__doc__':
-                        self.__doc__ = importobj(modpath, attrname)
-                    else:
-                        self.__map__[name] = (modpath, attrname)
+                    self.__map__[name] = (modpath, attrname)
 
     def __repr__(self):
         l = []
@@ -126,34 +135,27 @@ class ApiModule(ModuleType):
         return dict
     __dict__ = property(__dict__)
 
-class AliasModule(ModuleType):
-    def __init__(self, name, modpath):
-        self.__name__ = name
-        self.__modpath = modpath
 
-    def __repr__(self):
-        l = []
-        if hasattr(self, '__version__'):
-            l.append("version=" + repr(self.__version__))
-        if hasattr(self, '__file__'):
-            l.append('from ' + repr(self.__file__))
-        if l:
-            return '<AliasModule %r %s>' % (self.__name__, " ".join(l))
-        return '<AliasModule %r>' % (self.__name__,)
+def AliasModule(modname, modpath):
+    mod = []
 
-    def __getattr__(self, name):
-        mod = importobj(self.__modpath, None)
-        result = getattr(mod, name)
-        setattr(self, name, result)
-        for k, v in mod.__dict__.items():
-            setattr(self, k, v)
-        return result
+    def getmod():
+        if not mod:
+            mod.append(importobj(modpath, None))
+        return mod[0]
 
-    def __dict__(self):
-        # force all the content of the module to be loaded when __dict__ is read
-        dictdescr = ModuleType.__dict__['__dict__']
-        dict = dictdescr.__get__(self)
-        if dict is not None:
-            hasattr(self, 'some')
-        return dict
-    __dict__ = property(__dict__)
+    class AliasModule(ModuleType):
+
+        def __repr__(self):
+            return '<AliasModule %r for %r>' % (modname, modpath)
+
+        def __getattribute__(self, name):
+            return getattr(getmod(), name)
+
+        def __setattr__(self, name, value):
+            setattr(getmod(), name, value)
+
+        def __delattr__(self, name):
+            delattr(getmod(), name)
+
+    return AliasModule(modname)
