@@ -141,6 +141,8 @@ def AliasModule(modname, modpath):
 
     def getmod():
         if not mod:
+            if modname == modpath:
+                sys.modules.pop(modname, None)
             mod.append(importobj(modpath, None))
         return mod[0]
 
