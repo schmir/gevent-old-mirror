@@ -207,7 +207,7 @@ class WSGIHandler(object):
                 return
             self.request_version = "HTTP/0.9"
         else:
-            self.log_error('Invalid GET method: %r', raw_requestline)
+            self.log_error('Invalid HTTP method: %r', raw_requestline)
             return
 
         self.headers = self.MessageClass(self.rfile, 0)
@@ -432,8 +432,7 @@ class WSGIHandler(object):
                 self.result.close()
             self.wsgi_input._discard()
             self.time_finish = time.time()
-            if self.socket is not None:
-                self.log_request()
+            self.log_request()
 
     def get_environ(self):
         env = self.server.get_environ()
