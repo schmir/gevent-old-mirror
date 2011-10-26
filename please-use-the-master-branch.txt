@@ -1,0 +1,2 @@
+I've changed my mirror scripts to use hggit. This branch won't receive
+any further updates. Please use the master branch instead.
