@@ -2,7 +2,7 @@ import os
 import sys
 import array
 import gevent
-from gevent import socket
+from gevent import socket, six
 import greentest
 import time
 
@@ -118,7 +118,7 @@ class TestTCP(greentest.TestCase):
             data_read = conn.makefile().read()
             self.assertEqual(len(data_sent), len(data_read))
             self.assertEqual(data_sent, data_read)
-            print '%s: WARNING: read the data instead of failing with timeout' % self.__class__.__name__
+            six.print_('%s: WARNING: read the data instead of failing with timeout' % self.__class__.__name__)
 
     def test_makefile(self):
         def accept_once():
