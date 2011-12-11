@@ -14,6 +14,7 @@ import gevent
 from gevent.server import StreamServer
 from gevent import server
 from gevent.hub import GreenletExit
+from gevent import six
 
 
 __all__ = ['WSGIHandler', 'WSGIServer']
@@ -378,7 +379,8 @@ class WSGIHandler(object):
         msg = ''.join(towrite)
         try:
             self.socket.sendall(msg)
-        except socket.error, ex:
+        except socket.error:
+            ex = sys.exc_info()[1]
             self.status = 'socket error: %s' % ex
             if self.code > 0:
                 self.code = -self.code
@@ -390,7 +392,7 @@ class WSGIHandler(object):
             try:
                 if self.headers_sent:
                     # Re-raise original exception if headers sent
-                    raise exc_info[0], exc_info[1], exc_info[2]
+                    six.reraise(*exc_info)
             finally:
                 # Avoid dangling circular ref
                 exc_info = None
