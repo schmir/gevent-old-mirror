@@ -1,0 +1,66 @@
+#! /usr/bin/env python
+
+import sys, os
+
+files = """
+test__greenlet.py
+test__greenletset.py
+test__timeout.py
+test__core.py
+test__event.py
+test__core_watcher.py
+test__pool.py
+test__systemerror.py
+""".split()
+
+def main():
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    for fn in files:
+        err = os.system("py.test %s" % fn)
+        if err:
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
+"""
+test__all__.py
+test__api.py
+test__api_timeout.py
+test__backdoor.py
+test__benchmarks.py
+test__core_callback.py
+test__core_loop_run.py
+test__core.py
+test__core_timer.py
+test__doctests.py
+test__event.py
+test__examples.py
+test__exc_info.py
+test__execmodules.py
+test__greenio.py
+test__greenness.py
+test__hub.py
+test__local.py
+test__memleak.py
+test__monkey.py
+test__pool.py
+test__pywsgi.py
+test__queue.py
+test__refcount.py
+test__select.py
+test__semaphore.py
+test__server.py
+test__server_pywsgi.py
+test__signal.py
+test__socket_close.py
+test__socket_dns.py
+test__socket_errors.py
+test__socket.py
+test__socket_ssl.py
+test__socket_timeout.py
+test__systemerror.py
+test__threading_patched_local.py
+test__timeout.py
+"""
