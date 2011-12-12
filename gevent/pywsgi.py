@@ -5,9 +5,9 @@ import errno
 import sys
 import time
 import traceback
-import mimetools
 from datetime import datetime
 from urllib import unquote
+import email.message, email.parser
 
 from gevent import socket
 import gevent
@@ -166,9 +166,59 @@ class Input(object):
         return line
 
 
+class HTTPMessage(email.message.Message):
+    def getallmatchingheaders(self, name):
+        """Find all header lines matching a given header name.
+
+        Look through the list of headers and find all lines matching a given
+        header name (and their continuation lines).  A list of the lines is
+        returned, without interpretation.  If the header does not occur, an
+        empty list is returned.  If the header occurs multiple times, all
+        occurrences are returned.  Case is not important in the header name.
+        """
+        name = name.lower() + ':'
+        n = len(name)
+        lst = []
+        hit = 0
+        for line in self.headers:
+            if line[:n].lower() == name:
+                hit = 1
+            elif not line[:1].isspace():
+                hit = 0
+            if hit:
+                lst.append(line)
+        return lst
+
+def parse_headers(fp, _class=HTTPMessage):
+    """Parses only RFC2822 headers from a file pointer.
+
+    email Parser wants to see strings rather than bytes.
+    But a TextIOWrapper around self.rfile would buffer too many bytes
+    from the stream, bytes which we later need to read as bytes.
+    So we read the correct bytes here, as bytes, for email Parser
+    to parse.
+
+    """
+    _MAXLINE = 65536
+    headers = []
+    while True:
+        line = fp.readline(_MAXLINE + 1)
+        if len(line) > _MAXLINE:
+            raise LineTooLong("header line")
+        headers.append(line)
+        if line in (b'\r\n', b'\n', b''):
+            break
+    hstring = six.b('').join(headers)
+    if six.PY3:
+        hstring = hstring.decode('iso-8859-1')
+
+    return email.parser.Parser(_class=_class).parsestr(hstring)
+
+
+
 class WSGIHandler(object):
     protocol_version = 'HTTP/1.1'
-    MessageClass = mimetools.Message
+    MessageClass = HTTPMessage
 
     def __init__(self, socket, address, server, rfile=None):
         self.socket = socket
@@ -233,10 +283,11 @@ class WSGIHandler(object):
             self.log_error('Invalid HTTP method: %r', raw_requestline)
             return
 
-        self.headers = self.MessageClass(self.rfile, 0)
-        if self.headers.status:
-            self.log_error('Invalid headers status: %r', self.headers.status)
-            return
+        self.headers = parse_headers(self.rfile, _class=self.MessageClass)
+
+        # if self.headers.status:
+        #     self.log_error('Invalid headers status: %r', self.headers.status)
+        #     return
 
         if self.headers.get("transfer-encoding", "").lower() == "chunked":
             try:
@@ -482,18 +533,20 @@ class WSGIHandler(object):
         env['PATH_INFO'] = unquote(path)
         env['QUERY_STRING'] = query
 
-        if self.headers.typeheader is not None:
-            env['CONTENT_TYPE'] = self.headers.typeheader
+        typeheader = self.headers.get("content-type")
+        if typeheader is not None:
+            env['CONTENT_TYPE'] = typeheader
 
-        length = self.headers.getheader('content-length')
+        length = self.headers.get('content-length')
         if length:
             env['CONTENT_LENGTH'] = length
         env['SERVER_PROTOCOL'] = 'HTTP/1.0'
 
         env['REMOTE_ADDR'] = self.client_address[0]
 
-        for header in self.headers.headers:
-            key, value = header.split(':', 1)
+
+        for header in self.headers._headers:
+            key, value = header #.split(':', 1)
             key = key.replace('-', '_').upper()
             if key not in ('CONTENT_TYPE', 'CONTENT_LENGTH'):
                 value = value.strip()
