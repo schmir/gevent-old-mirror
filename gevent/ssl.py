@@ -22,7 +22,7 @@ import sys
 import errno
 from gevent.socket import socket, _fileobject, timeout_default
 from gevent.socket import error as socket_error, EBADF
-from gevent.hub import basestring
+from gevent import six
 
 __implements__ = ['SSLSocket',
                   'wrap_socket',
@@ -45,14 +45,15 @@ for name in __imports__[:]:
     except AttributeError:
         __imports__.remove(name)
 
+allowed_types = six.integer_types + (six.text_type, six.binary_type, tuple)
 for name in dir(__ssl__):
     if not name.startswith('_'):
         value = getattr(__ssl__, name)
-        if isinstance(value, (int, long, basestring, tuple)):
+        if isinstance(value, allowed_types):
             globals()[name] = value
             __imports__.append(name)
 
-del name, value
+del name, value, allowed_types
 
 __all__ = __implements__ + __imports__
 
@@ -72,8 +73,9 @@ class SSLSocket(socket):
         # see if it's connected
         try:
             socket.getpeername(self)
-        except socket_error, e:
-            if e[0] != errno.ENOTCONN:
+        except socket_error:
+            e = sys.exc_info()[1]
+            if e.args[0] != errno.ENOTCONN:
                 raise
             # no, no connection yet
             self._sslobj = None
